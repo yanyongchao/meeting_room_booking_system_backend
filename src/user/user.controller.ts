@@ -8,6 +8,10 @@ import {
   Query,
   Get,
   HttpCode,
+  ParseIntPipe,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -19,7 +23,10 @@ import { UserInfo } from 'src/custom.decorator';
 import { UpdateUserPasswordDto } from './dto/update-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UnLoginException } from '../unlogin.filter';
-
+import { generateParseIntPipe } from 'src/utils';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as path from 'path';
+import { storage } from 'src/my-file-storage';
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -142,5 +149,53 @@ export class UserController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return await this.userService.update(userId, updateUserDto);
+  }
+
+  @Get('freeze')
+  async freeze(@Query('id') userId: number) {
+    await this.userService.freezeUserById(userId);
+    return 'success';
+  }
+
+  @Get('list')
+  async list(
+    @Query('pageNo', generateParseIntPipe('pageNo'))
+    pageNo: number,
+    @Query('pageSize', generateParseIntPipe('pageSize'))
+    pageSize: number,
+    @Query('username') username: string,
+    @Query('nickName') nickName: string,
+    @Query('email') email: string,
+  ) {
+    return await this.userService.findUsers(
+      username,
+      nickName,
+      email,
+      pageNo,
+      pageSize,
+    );
+  }
+
+  @Post('upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      dest: 'uploads',
+      storage: storage,
+      limits: {
+        fileSize: 1024 * 1024 * 3,
+      },
+      fileFilter(req, file, callback) {
+        const extname = path.extname(file.originalname);
+        if (['.png', '.jpg', '.gif'].includes(extname)) {
+          callback(null, true);
+        } else {
+          callback(new BadRequestException('只能上传图片'), false);
+        }
+      },
+    }),
+  )
+  uploadFile(@UploadedFile() file: Express.Multer.File) {
+    console.log('file', file);
+    return file.path;
   }
 }
